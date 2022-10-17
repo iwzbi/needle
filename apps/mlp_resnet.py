@@ -42,7 +42,6 @@ def epoch(dataloader, model, opt=None):
         model.eval()
     else:
         model.train() 
-        opt.reset_grad()
     iteration = 0
     total_loss = 0
     total_example = len(dataloader.dataset)
@@ -58,6 +57,7 @@ def epoch(dataloader, model, opt=None):
         y_hat = np.argmax(logits.numpy(), axis=1)
         right_num += np.sum(y_hat == y.numpy())
         if opt:
+            opt.reset_grad()
             loss.backward()
             opt.step()
     average_loss = total_loss.numpy() / iteration
@@ -87,4 +87,8 @@ def train_mnist(batch_size=100, epochs=10, optimizer=ndl.optim.Adam,
 
 
 if __name__ == "__main__":
-    train_mnist(data_dir="../data")
+    train_acc, train_loss, test_acc, test_loss = train_mnist(epochs=2, data_dir="../data")
+    print(train_acc)
+    print(train_loss)
+    print(test_acc)
+    print(test_loss)
