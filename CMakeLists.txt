@@ -7,41 +7,6 @@ execute_process(COMMAND python3-config --prefix
 find_package(Python COMPONENTS Development Interpreter REQUIRED)
 include_directories(${Python_INCLUDE_DIRS})
 
-# find pybind in different ways, this will be deprecated since pybind11 is already a submodule
-execute_process(COMMAND python3 -m pybind11 --cmakedir
-  RESULT_VARIABLE __pybind_exit_code
-  OUTPUT_VARIABLE __pybind_path
-  OUTPUT_STRIP_TRAILING_WHITESPACE)
-find_package(pybind11 PATHS ${__pybind_path})
-
-if(NOT __pybind_exit_code)
-  message(STATUS "pybind11 found as a python package")
-else()
-  find_package(pybind11 QUIET)
-
-  if(pybind11_FOUND)
-    message(STATUS "pybind11 v${pybind11_VERSION} found in ${pybind11_INCLUDE_DIR}")
-
-  else()
-    message(STATUS "pybind11 NOT found in local, try to fetch via git")
-    
-    FetchContent_Declare(
-      pybind11_sources
-      GIT_REPOSITORY https://github.com/pybind/pybind11.git
-      GIT_TAG        v2.2
-    )
-  
-    FetchContent_GetProperties(pybind11_sources)
-    if(NOT pybind11_sources_POPULATED)
-      FetchContent_Populate(pybind11_sources)
-      add_subdirectory(
-        ${pybind11_sources_SOURCE_DIR}
-        ${pybind11_sources_BINARY_DIR}
-        )
-    endif()
-  endif()
-endif()
-
 if(NOT MSVC)
   set(CMAKE_CXX_FLAGS "-std=c++11 -O2 -march=native ${CMAKE_CXX_FLAGS}")
   set(CMAKE_CUDA_STANDARD 14)
@@ -50,9 +15,8 @@ else()
   set(CMAKE_CUDA_STANDARD 14)
 endif()
 
-include_directories(SYSTEM ${pybind11_INCLUDE_DIRS})
-list(APPEND LINKER_LIBS ${pybind11_LIBRARIES})
-
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/pybind11/include)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/pybind11)
 
 ###################
 ### CPU BACKEND ###
