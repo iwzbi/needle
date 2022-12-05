@@ -14,6 +14,7 @@ namespace cuda {
 #define TILE 4
 typedef float scalar_t;
 const size_t ELEM_SIZE = sizeof(scalar_t);
+typedef ssize_t ptrdiff_t;
 using scalarfn = scalar_t (*)(scalar_t);
 using ewisefn = scalar_t (*)(scalar_t, scalar_t);
 
@@ -48,10 +49,10 @@ CudaDims CudaOneDim(size_t size) {
 #define MAX_VEC_SIZE 8
 struct CudaVec {
   uint32_t size;
-  uint32_t data[MAX_VEC_SIZE];
+  int32_t data[MAX_VEC_SIZE];
 };
 
-CudaVec VecToCuda(const std::vector<uint32_t> &x) {
+CudaVec VecToCuda(const std::vector<int32_t> &x) {
   CudaVec shape;
   if (x.size() > MAX_VEC_SIZE)
     throw std::runtime_error("Exceeded CUDA supported max dimesions");
@@ -100,7 +101,6 @@ __global__ void CompactKernel(const scalar_t *a, scalar_t *out, size_t size,
    */
   size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
 
-  /// BEGIN YOUR SOLUTION
   if (gid < size) {
     size_t a_idx = 0, next_num = gid;
     for (int i = shape.size - 1; i >= 0; i--) {
@@ -109,11 +109,10 @@ __global__ void CompactKernel(const scalar_t *a, scalar_t *out, size_t size,
     }
     out[gid] = a[a_idx + offset];
   }
-  /// END YOUR SOLUTION
 }
 
-void Compact(const CudaArray &a, CudaArray *out, std::vector<uint32_t> shape,
-             std::vector<uint32_t> strides, size_t offset) {
+void Compact(const CudaArray &a, CudaArray *out, std::vector<int32_t> shape,
+             std::vector<int32_t> strides, size_t offset) {
   /**
    * Compact an array in memory.  Unlike the C++ version, in CUDA this will
    * primarily call the relevant CUDA kernel.  In this case, we illustrate how
@@ -153,7 +152,7 @@ __global__ void EwiseSetitemKernel(const scalar_t *a, scalar_t *out,
 }
 
 void EwiseSetitem(const CudaArray &a, CudaArray *out,
-                  std::vector<uint32_t> shape, std::vector<uint32_t> strides,
+                  std::vector<int32_t> shape, std::vector<int32_t> strides,
                   size_t offset) {
   /**
    * Set items in a (non-compact) array using CUDA.  Yyou will most likely want
@@ -168,11 +167,10 @@ void EwiseSetitem(const CudaArray &a, CudaArray *out,
    *   offset: offset of the *out* array (not a, which has zero offset, being
    * compact)
    */
-  /// BEGIN YOUR SOLUTION
+
   CudaDims dim = CudaOneDim(out->size);
   EwiseSetitemKernel<<<dim.grid, dim.block>>>(
       a.ptr, out->ptr, a.size, VecToCuda(shape), VecToCuda(strides), offset);
-  /// END YOUR SOLUTION
 }
 
 __global__ void ScalarSetitemKernel(scalar_t val, scalar_t *out, size_t size,
@@ -191,7 +189,7 @@ __global__ void ScalarSetitemKernel(scalar_t val, scalar_t *out, size_t size,
 }
 
 void ScalarSetitem(size_t size, scalar_t val, CudaArray *out,
-                   std::vector<uint32_t> shape, std::vector<uint32_t> strides,
+                   std::vector<int32_t> shape, std::vector<int32_t> strides,
                    size_t offset) {
   /**
    * Set items is a (non-compact) array
@@ -204,11 +202,10 @@ void ScalarSetitem(size_t size, scalar_t val, CudaArray *out,
    * items are to be written shape: shapes of each dimension of out strides:
    * strides of the out array offset: offset of the out array
    */
-  /// BEGIN YOUR SOLUTION
+
   CudaDims dim = CudaOneDim(out->size);
   ScalarSetitemKernel<<<dim.grid, dim.block>>>(
       val, out->ptr, size, VecToCuda(shape), VecToCuda(strides), offset);
-  /// END YOUR SOLUTION
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -263,7 +260,6 @@ void ScalarAdd(const CudaArray &a, scalar_t val, CudaArray *out) {
  * the proper) signatures above.
  */
 
-/// BEGIN YOUR SOLUTION
 __device__ __forceinline__ scalar_t multiple(scalar_t a, scalar_t b) {
   return a * b;
 }
@@ -404,7 +400,6 @@ void EwiseTanh(const CudaArray &a, CudaArray *out) {
   cudaMemcpyFromSymbol(&tanh, d_tanh, sizeof(scalarfn));
   EwiseOP<<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size, tanh);
 }
-/// END YOUR SOLUTION
 
 ////////////////////////////////////////////////////////////////////////////////
 // Elementwise and scalar operations
@@ -482,7 +477,6 @@ void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M,
    *   P: columns of b / out
    */
 
-  /// BEGIN YOUR SOLUTION
   Fill(out, 0.0f);
   if (M < TILE || P < TILE || N < TILE) {
     dim3 block(TILE, TILE);
@@ -493,7 +487,6 @@ void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M,
     dim3 grid((M - 1) / TILE + 1, (P - 1) / TILE + 1);
     MatmulKernel_tile<<<grid, block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
   }
-  /// END YOUR SOLUTION
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -523,11 +516,10 @@ void ReduceMax(const CudaArray &a, CudaArray *out, size_t reduce_size) {
    *   out: compact array to write into
    *   redice_size: size of the dimension to reduce over
    */
-  /// BEGIN YOUR SOLUTION
+
   auto dim = CudaOneDim(out->size);
   ReduceMaxKernel<<<dim.grid, dim.block>>>(a.ptr, out->ptr, reduce_size,
                                            out->size);
-  /// END YOUR SOLUTION
 }
 
 __global__ void ReduceSumKernel(const scalar_t *a, scalar_t *out,
@@ -552,11 +544,10 @@ void ReduceSum(const CudaArray &a, CudaArray *out, size_t reduce_size) {
    *   out: compact array to write into
    *   redice_size: size of the dimension to reduce over
    */
-  /// BEGIN YOUR SOLUTION
+
   auto dim = CudaOneDim(out->size);
   ReduceSumKernel<<<dim.grid, dim.block>>>(a.ptr, out->ptr, reduce_size,
                                            out->size);
-  /// END YOUR SOLUTION
 }
 
 }  // namespace cuda

@@ -42,7 +42,7 @@ void Fill(AlignedArray *out, scalar_t val) {
 }
 
 void Compact(const AlignedArray &a, AlignedArray *out,
-             std::vector<uint32_t> shape, std::vector<uint32_t> strides,
+             std::vector<int32_t> shape, std::vector<int32_t> strides,
              size_t offset) {
   /**
    * Compact an array in memory
@@ -60,7 +60,7 @@ void Compact(const AlignedArray &a, AlignedArray *out,
    * this is true for all the function will implement here, so we won't repeat
    * this note.)
    */
-  /// BEGIN YOUR SOLUTION
+
   size_t ndim = shape.size();
   std::vector<size_t> dim_idx(ndim, 0);
   size_t total_num = 1;
@@ -86,11 +86,10 @@ void Compact(const AlignedArray &a, AlignedArray *out,
       }
     }
   }
-  /// END YOUR SOLUTION
 }
 
 void EwiseSetitem(const AlignedArray &a, AlignedArray *out,
-                  std::vector<uint32_t> shape, std::vector<uint32_t> strides,
+                  std::vector<int32_t> shape, std::vector<int32_t> strides,
                   size_t offset) {
   /**
    * Set items in a (non-compact) array
@@ -103,7 +102,7 @@ void EwiseSetitem(const AlignedArray &a, AlignedArray *out,
    *   offset: offset of the *out* array (not a, which has zero offset, being
    * compact)
    */
-  /// BEGIN YOUR SOLUTION
+
   size_t ndim = shape.size();
   std::vector<size_t> dim_idx(ndim, 0);
   size_t total_num = 1;
@@ -129,11 +128,10 @@ void EwiseSetitem(const AlignedArray &a, AlignedArray *out,
       }
     }
   }
-  /// END YOUR SOLUTION
 }
 
 void ScalarSetitem(const size_t size, scalar_t val, AlignedArray *out,
-                   std::vector<uint32_t> shape, std::vector<uint32_t> strides,
+                   std::vector<int32_t> shape, std::vector<int32_t> strides,
                    size_t offset) {
   /**
    * Set items is a (non-compact) array
@@ -147,7 +145,6 @@ void ScalarSetitem(const size_t size, scalar_t val, AlignedArray *out,
    * strides of the out array offset: offset of the out array
    */
 
-  /// BEGIN YOUR SOLUTION
   size_t ndim = shape.size();
   std::vector<size_t> dim_idx(ndim, 0);
 
@@ -169,7 +166,6 @@ void ScalarSetitem(const size_t size, scalar_t val, AlignedArray *out,
       }
     }
   }
-  /// END YOUR SOLUTION
 }
 
 void EwiseAdd(const AlignedArray &a, const AlignedArray &b, AlignedArray *out) {
@@ -211,7 +207,6 @@ void ScalarAdd(const AlignedArray &a, scalar_t val, AlignedArray *out) {
  * the proper) signatures above.
  */
 
-/// BEGIN YOUR SOLUTION
 template <typename OP>
 void EwiseOP(const AlignedArray &a, const AlignedArray &b, AlignedArray *out,
              OP op) {
@@ -282,7 +277,6 @@ void EwiseExp(const AlignedArray &a, AlignedArray *out) {
 void EwiseTanh(const AlignedArray &a, AlignedArray *out) {
   EwiseOP(a, out, tanhf);
 }
-/// END YOUR SOLUTION
 
 void Matmul(const AlignedArray &a, const AlignedArray &b, AlignedArray *out,
             uint32_t m, uint32_t n, uint32_t p) {
@@ -299,7 +293,6 @@ void Matmul(const AlignedArray &a, const AlignedArray &b, AlignedArray *out,
    *   p: columns of b / out
    */
 
-  /// BEGIN YOUR SOLUTION
   Fill(out, 0);
   for (size_t i = 0; i < m; i++) {
     for (size_t k = 0; k < n; k++) {
@@ -308,7 +301,6 @@ void Matmul(const AlignedArray &a, const AlignedArray &b, AlignedArray *out,
       }
     }
   }
-  /// END YOUR SOLUTION
 }
 
 inline void AlignedDot(const float *__restrict__ a, const float *__restrict__ b,
@@ -336,7 +328,6 @@ inline void AlignedDot(const float *__restrict__ a, const float *__restrict__ b,
   b = (const float *)__builtin_assume_aligned(b, TILE * ELEM_SIZE);
   out = (float *)__builtin_assume_aligned(out, TILE * ELEM_SIZE);
 
-  /// BEGIN YOUR SOLUTION
   for (size_t i = 0; i < TILE; i++) {
     for (size_t k = 0; k < TILE; k++) {
       for (size_t j = 0; j < TILE; j++) {
@@ -344,7 +335,6 @@ inline void AlignedDot(const float *__restrict__ a, const float *__restrict__ b,
       }
     }
   }
-  /// END YOUR SOLUTION
 }
 
 void MatmulTiled(const AlignedArray &a, const AlignedArray &b,
@@ -369,7 +359,7 @@ void MatmulTiled(const AlignedArray &a, const AlignedArray &b,
    *   p: columns of b / out
    *
    */
-  /// BEGIN YOUR SOLUTION
+
   Fill(out, 0);
   size_t MTILE = m / TILE, NTILE = n / TILE, PTILE = p / TILE;
   for (size_t i = 0; i < MTILE; i++) {
@@ -382,7 +372,6 @@ void MatmulTiled(const AlignedArray &a, const AlignedArray &b,
       }
     }
   }
-  /// END YOUR SOLUTION
 }
 
 void ReduceMax(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
@@ -395,7 +384,6 @@ void ReduceMax(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
    *   reduce_size: size of the dimension to reduce over
    */
 
-  /// BEGIN YOUR SOLUTION
   for (size_t i = 0; i < out->size; i++) {
     scalar_t max_num = a.ptr[i * reduce_size];
     for (size_t j = 0; j < reduce_size; j++) {
@@ -403,7 +391,6 @@ void ReduceMax(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
     }
     out->ptr[i] = max_num;
   }
-  /// END YOUR SOLUTION
 }
 
 void ReduceSum(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
@@ -416,7 +403,6 @@ void ReduceSum(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
    *   reduce_size: size of the dimension to reduce over
    */
 
-  /// BEGIN YOUR SOLUTION
   for (size_t i = 0; i < out->size; i++) {
     scalar_t sum_num = 0;
     for (size_t j = 0; j < reduce_size; j++) {
@@ -424,7 +410,6 @@ void ReduceSum(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
     }
     out->ptr[i] = sum_num;
   }
-  /// END YOUR SOLUTION
 }
 
 }  // namespace cpu

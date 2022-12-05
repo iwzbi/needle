@@ -29,7 +29,7 @@ class CPUDevice(Device):
         return numpy.random.rand(*shape).astype(dtype)
 
     def one_hot(self, n, i, dtype="float32"):
-        return numpy.eye(n, dtype=dtype)
+        return numpy.eye(n, dtype=dtype)[i]
 
     def empty(self, shape, dtype="float32"):
         return numpy.empty(shape, dtype=dtype)

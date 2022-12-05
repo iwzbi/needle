@@ -22,13 +22,25 @@ class SGD(Optimizer):
         self.momentum = momentum
         self.u = {}
         self.weight_decay = weight_decay
-        for p in self.params: self.u[p] = 0
 
     def step(self):
+
         for p in self.params:
             regula = p.grad + p * self.weight_decay
-            self.u[p] = (self.momentum * self.u[p] + (1 - self.momentum) * regula).data
+            self.u[p] = (self.momentum * self.u.get(p, 0) +
+                         (1 - self.momentum) * regula).data
             p.cached_data -= self.lr * self.u[p].cached_data
+
+    def clip_grad_norm(self, max_norm=0.25):
+        """
+        Clips gradient norm of parameters.
+        """
+        total_norm = np.linalg.norm(np.array(
+            [np.linalg.norm(p.grad.detach().numpy()).reshape((1,)) for p in self.params]))
+        clip_coef = max_norm / (total_norm + 1e-6)
+        clip_coef_clamped = min((np.asscalar(clip_coef), 1.0))
+        for p in self.params:
+            p.grad = p.grad.detach() * clip_coef_clamped
 
 
 class Adam(Optimizer):
@@ -52,16 +64,14 @@ class Adam(Optimizer):
         self.m = {}
         self.v = {}
 
-        for p in self.params: 
-            self.m[p] = 0
-            self.v[p] = 0
-
     def step(self):
+
         self.t += 1
         for p in self.params:
             regula = p.grad + p * self.weight_decay
-            m = self.beta1 * self.m[p] + (1 - self.beta1) * regula
-            v = self.beta2 * self.v[p] + (1 - self.beta2) * (regula ** 2)
+            m = self.beta1 * self.m.get(p, 0) + (1 - self.beta1) * regula
+            v = self.beta2 * self.v.get(p, 0) + \
+                (1 - self.beta2) * (regula ** 2)
             self.m[p] = m.data
             self.v[p] = v.data
             m = (m / (1 - self.beta1 ** self.t)).data

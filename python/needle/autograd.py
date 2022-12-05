@@ -1,4 +1,5 @@
 """Core data structures."""
+from .backend_selection import Device, array_api, NDArray, default_device
 import needle
 from typing import List, Optional, NamedTuple, Tuple, Union
 from collections import namedtuple
@@ -8,61 +9,6 @@ from needle import init
 # needle version
 LAZY_MODE = False
 TENSOR_COUNTER = 0
-
-# NOTE: we will numpy as the array_api
-# to backup our computations, this line will change in later homeworks
-import numpy as array_api
-
-NDArray = numpy.ndarray
-
-
-class Device:
-    """Indicates the device supporting an NDArray."""
-
-
-class CPUDevice(Device):
-    """Represents data that sits in CPU"""
-
-    def __repr__(self):
-        return "needle.cpu()"
-
-    def __hash__(self):
-        return self.__repr__().__hash__()
-
-    def __eq__(self, other):
-        return isinstance(other, CPUDevice)
-
-    def enabled(self):
-        return True
-
-    def zeros(self, *shape, dtype="float32"):
-        return numpy.zeros(shape, dtype=dtype)
-
-    def ones(self, *shape, dtype="float32"):
-        return numpy.ones(shape, dtype=dtype)
-
-    def randn(self, *shape):
-        # note: numpy doesn't support types within standard random routines, and 
-        # .astype("float32") does work if we're generating a singleton
-        return numpy.random.randn(*shape) 
-
-    def rand(self, *shape):
-        # note: numpy doesn't support types within standard random routines, and 
-        # .astype("float32") does work if we're generating a singleton
-        return numpy.random.rand(*shape)
-
-    def one_hot(self, n, i, dtype="float32"):
-        return numpy.eye(n, dtype=dtype)[i]
-
-
-def cpu():
-    """Return cpu device"""
-    return CPUDevice()
-
-
-def all_devices():
-    """return a list of all available devices"""
-    return [cpu()]
 
 
 class Op:
@@ -204,8 +150,14 @@ class Value:
             value.realize_cached_data()
         return value
 
+    def numpy(self):
+        data = self.realize_cached_data()
+        if array_api is numpy:
+            return data
+        return data.numpy() if not isinstance(data, tuple) else [x.numpy() for x in data]
 
-### Not needed in HW1
+
+# Not needed in HW1
 class TensorTuple(Value):
     """Represent a tuple of tensors.
 
@@ -235,7 +187,7 @@ class TensorTuple(Value):
 
     def detach(self):
         """Create a new tensor that shares the data but detaches from the graph."""
-        return Tuple.make_const(self.realize_cached_data())
+        return TensorTuple.make_const(self.realize_cached_data())
 
 
 class Tensor(Value):
@@ -246,7 +198,7 @@ class Tensor(Value):
         array,
         *,
         device: Optional[Device] = None,
-        dtype=None,
+        dtype="float32",
         requires_grad=True,
         **kwargs
     ):
@@ -263,8 +215,9 @@ class Tensor(Value):
                     array.numpy(), device=device, dtype=dtype
                 )
         else:
-            device = device if device else cpu()
-            cached_data = Tensor._array_from_numpy(array, device=device, dtype=dtype)
+            device = device if device else default_device()
+            cached_data = Tensor._array_from_numpy(
+                array, device=device, dtype=dtype)
 
         self._init(
             None,
@@ -330,13 +283,16 @@ class Tensor(Value):
     @property
     def device(self):
         data = self.realize_cached_data()
-        # numpy array always sits on cpu
         if array_api is numpy:
-            return cpu()
+            return default_device()
         return data.device
 
     def backward(self, out_grad=None):
-        out_grad = out_grad if out_grad else init.ones(*self.shape, dtype=self.dtype, device=self.device)
+        out_grad = (
+            out_grad
+            if out_grad
+            else init.ones(*self.shape, dtype=self.dtype, device=self.device)
+        )
         compute_gradient_of_variables(self, out_grad)
 
     def __repr__(self):
@@ -344,12 +300,6 @@ class Tensor(Value):
 
     def __str__(self):
         return self.realize_cached_data().__str__()
-
-    def numpy(self):
-        data = self.realize_cached_data()
-        if array_api is numpy:
-            return data
-        return data.numpy()
 
     def __add__(self, other):
         if isinstance(other, Tensor):
@@ -364,6 +314,7 @@ class Tensor(Value):
             return needle.ops.MulScalar(other)(self)
 
     def __pow__(self, other):
+
         if isinstance(other, Tensor):
             return needle.ops.PowerScalar()(self, other)
         else:
@@ -374,6 +325,12 @@ class Tensor(Value):
             return needle.ops.EWiseAdd()(self, needle.ops.Negate()(other))
         else:
             return needle.ops.AddScalar(-other)(self)
+
+    def __rsub__(self, other):
+        if isinstance(other, Tensor):
+            return needle.ops.EWiseAdd()(needle.ops.Negate()(self), other)
+        else:
+            return needle.ops.AddScalar(other)(-self)
 
     def __truediv__(self, other):
         if isinstance(other, Tensor):
@@ -404,7 +361,6 @@ class Tensor(Value):
 
     __radd__ = __add__
     __rmul__ = __mul__
-    __rsub__ = __sub__
     __rmatmul__ = __matmul__
 
 
@@ -419,7 +375,6 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     # We are really taking a derivative of the scalar reduce_sum(output_node)
     # instead of the vector output_node. But this is the common case for loss function.
     node_to_output_grads_list[output_tensor] = [out_grad]
-
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
 
@@ -443,6 +398,7 @@ def find_topo_sort(node_list: List[Value]) -> List[Value]:
     after all its predecessors are traversed due to post-order DFS, we get a topological
     sort.
     """
+
     topo = []
     visited = set()
     for node in node_list:
@@ -452,11 +408,13 @@ def find_topo_sort(node_list: List[Value]) -> List[Value]:
 
 def topo_sort_dfs(node, visited, topo_order):
     """Post-order DFS"""
+
+    if node in visited:
+        return
+    visited.add(node)
     for input_node in node.inputs:
         topo_sort_dfs(input_node, visited, topo_order)
-    if node not in visited:
-        visited.add(node)
-        topo_order.append(node)
+    topo_order.append(node)
 
 
 ##############################
@@ -468,4 +426,5 @@ def sum_node_list(node_list):
     """Custom sum function in order to avoid create redundant nodes in Python sum implementation."""
     from operator import add
     from functools import reduce
+
     return reduce(add, node_list)
