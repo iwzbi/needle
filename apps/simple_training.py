@@ -72,8 +72,11 @@ def train_cifar10(model, dataloader, n_epochs=1, optimizer=ndl.optim.Adam,
 
     opt = optimizer(model.parameters(), lr, weight_decay)
     for i in range(n_epochs):
+        start_time = time.time()
         acc, loss = epoch_general_cifar10(dataloader, model, loss_fn(), opt)
-        print("train epoch{}: acc: {}, loss: {}".format(i, acc, loss))
+        end_time = time.time()
+        print("train epoch{}: acc: {}, loss: {}, time cost{}".format(
+            i, acc, loss, end_time-start_time))
     return acc, loss
 
 
@@ -178,9 +181,12 @@ def train_ptb(model, data, seq_len=40, n_epochs=1, optimizer=ndl.optim.SGD,
 
     opt = optimizer(model.parameters(), lr, weight_decay)
     for i in range(n_epochs):
+        start_time = time.time()
         acc, loss = epoch_general_ptb(
             data, model, seq_len, loss_fn(), opt, clip, device, dtype)
-        print("train epoch{}: acc: {}, loss: {}".format(i, acc, loss))
+        end_time = time.time()
+        print("train epoch{}: acc: {}, loss: {}, time cost: {}".format(
+            i, acc, loss, end_time-start_time))
     return acc, loss
 
 

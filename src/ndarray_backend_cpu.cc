@@ -1,3 +1,6 @@
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -33,9 +36,10 @@ struct AlignedArray {
 };
 
 void Fill(AlignedArray *out, scalar_t val) {
-  /**
-   * Fill the values of an aligned array with val
-   */
+/**
+ * Fill the values of an aligned array with val
+ */
+#pragma omp parallel for
   for (int i = 0; i < out->size; i++) {
     out->ptr[i] = val;
   }
@@ -169,19 +173,21 @@ void ScalarSetitem(const size_t size, scalar_t val, AlignedArray *out,
 }
 
 void EwiseAdd(const AlignedArray &a, const AlignedArray &b, AlignedArray *out) {
-  /**
-   * Set entries in out to be the sum of correspondings entires in a and b.
-   */
+/**
+ * Set entries in out to be the sum of correspondings entires in a and b.
+ */
+#pragma omp parallel for
   for (size_t i = 0; i < a.size; i++) {
     out->ptr[i] = a.ptr[i] + b.ptr[i];
   }
 }
 
 void ScalarAdd(const AlignedArray &a, scalar_t val, AlignedArray *out) {
-  /**
-   * Set entries in out to be the sum of corresponding entry in a plus the
-   * scalar val.
-   */
+/**
+ * Set entries in out to be the sum of corresponding entry in a plus the
+ * scalar val.
+ */
+#pragma omp parallel for
   for (size_t i = 0; i < a.size; i++) {
     out->ptr[i] = a.ptr[i] + val;
   }
@@ -210,18 +216,21 @@ void ScalarAdd(const AlignedArray &a, scalar_t val, AlignedArray *out) {
 template <typename OP>
 void EwiseOP(const AlignedArray &a, const AlignedArray &b, AlignedArray *out,
              OP op) {
+#pragma omp parallel for
   for (size_t i = 0; i < a.size; i++) {
     out->ptr[i] = op(a.ptr[i], b.ptr[i]);
   }
 }
 template <typename OP>
 void EwiseOP(const AlignedArray &a, AlignedArray *out, OP op) {
+#pragma omp parallel for
   for (size_t i = 0; i < a.size; i++) {
     out->ptr[i] = op(a.ptr[i]);
   }
 }
 template <typename OP>
 void ScalarOp(const AlignedArray &a, scalar_t val, AlignedArray *out, OP op) {
+#pragma omp parallel for
   for (size_t i = 0; i < a.size; i++) {
     out->ptr[i] = op(a.ptr[i], val);
   }
@@ -294,6 +303,7 @@ void Matmul(const AlignedArray &a, const AlignedArray &b, AlignedArray *out,
    */
 
   Fill(out, 0);
+#pragma omp parallel for
   for (size_t i = 0; i < m; i++) {
     for (size_t k = 0; k < n; k++) {
       for (size_t j = 0; j < p; j++) {
@@ -327,7 +337,7 @@ inline void AlignedDot(const float *__restrict__ a, const float *__restrict__ b,
   a = (const float *)__builtin_assume_aligned(a, TILE * ELEM_SIZE);
   b = (const float *)__builtin_assume_aligned(b, TILE * ELEM_SIZE);
   out = (float *)__builtin_assume_aligned(out, TILE * ELEM_SIZE);
-
+#pragma omp parallel for
   for (size_t i = 0; i < TILE; i++) {
     for (size_t k = 0; k < TILE; k++) {
       for (size_t j = 0; j < TILE; j++) {
@@ -383,9 +393,10 @@ void ReduceMax(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
    *   out: compact array to write into
    *   reduce_size: size of the dimension to reduce over
    */
-
+#pragma omp parallel for
   for (size_t i = 0; i < out->size; i++) {
     scalar_t max_num = a.ptr[i * reduce_size];
+#pragma omp parallel for reduction(max : max_num)
     for (size_t j = 0; j < reduce_size; j++) {
       max_num = std::max(max_num, a.ptr[i * reduce_size + j]);
     }
@@ -402,9 +413,10 @@ void ReduceSum(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
    *   out: compact array to write into
    *   reduce_size: size of the dimension to reduce over
    */
-
+#pragma omp parallel for
   for (size_t i = 0; i < out->size; i++) {
     scalar_t sum_num = 0;
+#pragma omp parallel for reduction(+ : sum_num)
     for (size_t j = 0; j < reduce_size; j++) {
       sum_num += a.ptr[i * reduce_size + j];
     }

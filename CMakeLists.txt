@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 project(needle C CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # find correct version of Python
 execute_process(COMMAND python3-config --prefix
@@ -15,14 +16,33 @@ else()
   set(CMAKE_CUDA_STANDARD 14)
 endif()
 
+# add pybind11
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/pybind11/include)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/pybind11)
+
+# add openmp
+find_package(OpenMP QUIET)
+if(OpenMP_FOUND)
+  message (STATUS "OpenMP_FOUND = ${OpenMP_FOUND}")
+  message (STATUS "OpenMP_CXX_FOUND = ${OpenMP_CXX_FOUND}")
+  list(APPEND LINKER_LIBS_CPU OpenMP::OpenMP_CXX)
+  include(CMakePrintHelpers)
+  cmake_print_properties(
+    TARGETS
+      OpenMP::OpenMP_CXX
+    PROPERTIES
+      INTERFACE_COMPILE_OPTIONS
+      INTERFACE_INCLUDE_DIRECTORIES
+      INTERFACE_LINK_LIBRARIES
+  )
+endif()
+
 
 ###################
 ### CPU BACKEND ###
 ###################
 add_library(ndarray_backend_cpu MODULE src/ndarray_backend_cpu.cc)
-target_link_libraries(ndarray_backend_cpu PUBLIC ${LINKER_LIBS})
+target_link_libraries(ndarray_backend_cpu PUBLIC ${LINKER_LIBS_CPU})
 pybind11_extension(ndarray_backend_cpu)
 pybind11_strip(ndarray_backend_cpu)
 
@@ -48,7 +68,7 @@ if(CUDA_FOUND)
   message(STATUS "Found cuda, building cuda backend")
 
   include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
-  list(APPEND LINKER_LIBS ${CUDA_CUDART_LIBRARY})
+  list(APPEND LINKER_LIBS_GPU ${CUDA_CUDART_LIBRARY})
 
   # invoke nvidia smi to detect if we really have a GPU
   execute_process(COMMAND "nvidia-smi" ERROR_QUIET  RESULT_VARIABLE NV_RET)
@@ -62,7 +82,7 @@ if(CUDA_FOUND)
   # set arch flags properly
   CUDA_ADD_LIBRARY(ndarray_backend_cuda MODULE src/ndarray_backend_cuda.cu OPTIONS ${ARCH_FLAGS})
 
-  target_link_libraries(ndarray_backend_cuda ${LINKER_LIBS})
+  target_link_libraries(ndarray_backend_cuda ${LINKER_LIBS_GPU})
   pybind11_extension(ndarray_backend_cuda)
   pybind11_strip(ndarray_backend_cuda)
 
