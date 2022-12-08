@@ -75,7 +75,7 @@ def train_cifar10(model, dataloader, n_epochs=1, optimizer=ndl.optim.Adam,
         start_time = time.time()
         acc, loss = epoch_general_cifar10(dataloader, model, loss_fn(), opt)
         end_time = time.time()
-        print("train epoch{}: acc: {}, loss: {}, time cost{}".format(
+        print("train epoch{}: acc: {}, loss: {}, time cost: {}".format(
             i, acc, loss, end_time-start_time))
     return acc, loss
 
