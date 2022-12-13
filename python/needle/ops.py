@@ -552,20 +552,25 @@ class Conv(TensorOp):
         self.padding = padding
 
     def compute(self, A, B):
+        assert A.device == B.device
+        if hasattr(A.device, "conv_forward_dnnl"):
+            print("use onednn")
+            return NDArray.conv_forward_dnnl(A, B, self.stride, self.padding)
+        else:
+            print("use plain cpu")
+            A_pad = A.pad(((0, 0),) + ((self.padding, self.padding),)
+                          * 2 + ((0, 0),))
+            N, H, W, C_in = A_pad.shape
+            K, _, _, C_out = B.shape
+            Ns, Hs, Ws, Cs = A_pad.strides
 
-        A_pad = A.pad(((0, 0),) + ((self.padding, self.padding),)
-                      * 2 + ((0, 0),))
-        N, H, W, C_in = A_pad.shape
-        K, _, _, C_out = B.shape
-        Ns, Hs, Ws, Cs = A_pad.strides
-
-        inner_dim = K * K * C_in
-        new_h = (H-K) // self.stride + 1
-        new_w = (W-K) // self.stride + 1
-        A2col = A_pad.as_strided(shape=(N, new_h, new_w, K, K, C_in),
-                                 strides=(Ns, Hs * self.stride, Ws * self.stride, Hs, Ws, Cs)).compact().reshape((N * new_h * new_w, inner_dim))
-        out = A2col @ B.reshape((K*K*C_in, C_out))
-        return out.reshape((N, new_h, new_w, C_out))
+            inner_dim = K * K * C_in
+            new_h = (H-K) // self.stride + 1
+            new_w = (W-K) // self.stride + 1
+            A2col = A_pad.as_strided(shape=(N, new_h, new_w, K, K, C_in),
+                                     strides=(Ns, Hs * self.stride, Ws * self.stride, Hs, Ws, Cs)).compact().reshape((N * new_h * new_w, inner_dim))
+            out = A2col @ B.reshape((K*K*C_in, C_out))
+            return out.reshape((N, new_h, new_w, C_out))
 
     def gradient(self, out_grad, node):
 

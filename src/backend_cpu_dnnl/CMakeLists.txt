@@ -1,0 +1,6 @@
+find_library(EXTERN_LIBRARY_DNNL dnnl)
+  list(APPEND LINKER_LIBS_CPU_DNNL ${EXTERN_LIBRARY_DNNL})
+  message(STATUS "Build with DNNL runtime: " ${EXTERN_LIBRARY_DNNL})
+add_library(ndarray_backend_cpu_dnnl SHARED ndarray_backend_cpu_dnnl.cc)
+target_link_libraries(ndarray_backend_cpu_dnnl PUBLIC ${LINKER_LIBS_CPU_DNNL})
+target_include_directories(ndarray_backend_cpu_dnnl INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})

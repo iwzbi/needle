@@ -1,6 +1,11 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#include <cpu_dnnl_config.h>
+#ifdef USE_DNNL
+#include <cpu_dnnl.hpp>
+#endif
+
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -423,6 +428,15 @@ void ReduceSum(const AlignedArray &a, AlignedArray *out, size_t reduce_size) {
     out->ptr[i] = sum_num;
   }
 }
+#ifdef USE_DNNL
+using namespace needle::cpu_dnnl;
+void ConvForwardDNNL(const AlignedArray &input, const AlignedArray &weight,
+                     AlignedArray *output, int N, int H, int W, int C_in,
+                     int C_out, int K, int S, int P) {
+  conv_forword_dnnl(input.ptr, weight.ptr, output->ptr, N, H, W, C_in, C_out, K,
+                    S, P);
+}
+#endif
 
 }  // namespace cpu
 }  // namespace needle
@@ -483,4 +497,7 @@ PYBIND11_MODULE(ndarray_backend_cpu, m) {
 
   m.def("reduce_max", ReduceMax);
   m.def("reduce_sum", ReduceSum);
+#ifdef USE_DNNL
+  m.def("conv_forward_dnnl", ConvForwardDNNL);
+#endif
 }

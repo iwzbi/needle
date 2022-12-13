@@ -496,6 +496,21 @@ class NDArray:
         self.device.ewise_tanh(self.compact()._handle, out._handle)
         return out
 
+    @staticmethod
+    def conv_forward_dnnl(data, weight, stride=1, padding=0):
+        assert data.device == weight.device
+        if hasattr(data.device, "conv_forward_dnnl"):
+            N, H, W, C_in = data.shape
+            KH, KW, _, C_out = weight.shape
+            out = NDArray(np.zeros((N, (H-KH+2*padding)//stride+1,
+                                    (W-KW+2*padding)//stride+1, C_out)), device=data.device)
+            out = out.compact()
+            data.device.conv_forward_dnnl(data.compact()._handle, weight._handle,
+                                          out._handle, N, H, W, C_in, C_out, KH, stride, padding)
+            return out
+        else:
+            raise RuntimeError
+
     # Matrix multiplication
     def __matmul__(self, other):
         """Matrix multiplication of two arrays.  This requires that both arrays

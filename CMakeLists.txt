@@ -37,6 +37,14 @@ if(OpenMP_FOUND)
   )
 endif()
 
+#add onednn
+set(USE_DNNL ON)
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_cpu_dnnl/backend_cpu_dnnl_config.h.in cpu_dnnl_config.h)
+if(USE_DNNL STREQUAL "ON")
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_cpu_dnnl)
+  list(APPEND LINKER_LIBS_CPU ndarray_backend_cpu_dnnl)
+endif()
 
 ###################
 ### CPU BACKEND ###
@@ -46,7 +54,7 @@ target_link_libraries(ndarray_backend_cpu PUBLIC ${LINKER_LIBS_CPU})
 pybind11_extension(ndarray_backend_cpu)
 pybind11_strip(ndarray_backend_cpu)
 
-
+target_include_directories(ndarray_backend_cpu PUBLIC "${PROJECT_BINARY_DIR}")
 # directly output to ffi folder
 set_target_properties(ndarray_backend_cpu
   PROPERTIES
