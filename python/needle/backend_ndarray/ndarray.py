@@ -511,7 +511,37 @@ class NDArray:
         else:
             raise RuntimeError
 
+    @staticmethod
+    def conv_backward_weight_dnnl(output_diff, data, K, stride=1, padding=0):
+        assert output_diff.device == data.device
+        if hasattr(data.device, "conv_backward_weight_dnnl"):
+            N, H, W, C_in = data.shape
+            _, _, _, C_out = output_diff.shape
+            weight_diff = NDArray(np.zeros((K, K, C_in, C_out)),
+                                  device=data.device)
+            weight_diff = weight_diff.compact()
+            data.device.conv_backward_weight_dnnl(data.compact()._handle, weight_diff._handle,
+                                                  output_diff.compact()._handle, N, H, W, C_in, C_out, K, stride, padding)
+            return weight_diff
+        else:
+            raise RuntimeError
+
+    @staticmethod
+    def conv_backward_input_dnnl(output_diff, weight, H, W, stride=1, padding=0):
+        assert output_diff.device == weight.device
+        if hasattr(weight.device, "conv_backward_input_dnnl"):
+            KH, KW, C_in, C_out = weight.shape
+            N, _, _, _ = output_diff.shape
+            input_diff = NDArray(np.zeros((N, H, W, C_in)), device=weight.device)
+            input_diff = input_diff.compact()
+            weight.device.conv_backward_input_dnnl(input_diff._handle, weight.compact()._handle,
+                                                  output_diff.compact()._handle, N, H, W, C_in, C_out, KH, stride, padding)
+            return input_diff
+        else:
+            raise RuntimeError
+
     # Matrix multiplication
+
     def __matmul__(self, other):
         """Matrix multiplication of two arrays.  This requires that both arrays
         be 2D (i.e., we don't handle batch matrix multiplication), and that the

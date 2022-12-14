@@ -433,8 +433,21 @@ using namespace needle::cpu_dnnl;
 void ConvForwardDNNL(const AlignedArray &input, const AlignedArray &weight,
                      AlignedArray *output, int N, int H, int W, int C_in,
                      int C_out, int K, int S, int P) {
-  conv_forword_dnnl(input.ptr, weight.ptr, output->ptr, N, H, W, C_in, C_out, K,
+  conv_forward_dnnl(input.ptr, weight.ptr, output->ptr, N, H, W, C_in, C_out, K,
                     S, P);
+}
+void ConvBackwardWeightDNNL(const AlignedArray &input,
+                            AlignedArray *weight_diff,
+                            const AlignedArray &output_diff, int N, int H,
+                            int W, int C_in, int C_out, int K, int S, int P) {
+  conv_backward_weight_dnnl(input.ptr, weight_diff->ptr, output_diff.ptr, N, H,
+                            W, C_in, C_out, K, S, P);
+}
+void ConvBackwardInputDNNL(AlignedArray *input_diff, const AlignedArray &weight,
+                           const AlignedArray &output_diff, int N, int H, int W,
+                           int C_in, int C_out, int K, int S, int P) {
+  conv_backward_input_dnnl(input_diff->ptr, weight.ptr, output_diff.ptr, N, H,
+                           W, C_in, C_out, K, S, P);
 }
 #endif
 
@@ -499,5 +512,7 @@ PYBIND11_MODULE(ndarray_backend_cpu, m) {
   m.def("reduce_sum", ReduceSum);
 #ifdef USE_DNNL
   m.def("conv_forward_dnnl", ConvForwardDNNL);
+  m.def("conv_backward_weight_dnnl", ConvBackwardWeightDNNL);
+  m.def("conv_backward_input_dnnl", ConvBackwardInputDNNL);
 #endif
 }

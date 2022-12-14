@@ -578,20 +578,30 @@ class Conv(TensorOp):
         # x_grad    (N, H, W, C_in)
         # w_grad    (K, K, C_in, C_out)
         X, W = node.inputs
+        N, _H, _W, C_in = X.shape
         K, _, _, C_out = W.shape
-        # (H+2P-K+1)-K+1+2X = H-2K+2+2P+2X = H, X = K-P-1
-        # n,nh,nw,cout conv k,k,cout,cin -> n,h,w,cin
-        W = transpose(flip(W, (0, 1)), (2, 3))
-        if (self.stride > 1):
-            out_grad = dilate(out_grad, (1, 2), self.stride-1)
-        x_grad = conv(out_grad, W, 1, K-self.padding-1)
-        # H-(H-K+1+2P)+1+2X=K-2P+2X=K, X=P
-        # cin,w,h,n conv nw,nh,n,cout -> cin,kw,kh,cout
-        X = transpose(transpose(X, (1, 2)), (0, 3))
-        out_grad = transpose(out_grad, (0, 2))
-        w_grad = conv(X, out_grad, 1, self.padding)
-        w_grad = transpose(w_grad, (0, 2))
-        return x_grad, w_grad
+        if hasattr(X.device, "conv_forward_dnnl"):
+            print("use onednn")
+            x_grad = NDArray.conv_backward_input_dnnl(
+                out_grad.cached_data, W.cached_data, _H, _W, self.stride, self.padding)
+            w_grad = NDArray.conv_backward_weight_dnnl(
+                out_grad.cached_data, X.cached_data, K, self.stride, self.padding)
+            return Tensor(x_grad), Tensor(w_grad)
+        else:
+            print("use plain cpu")
+            # (H+2P-K+1)-K+1+2X = H-2K+2+2P+2X = H, X = K-P-1
+            # n,nh,nw,cout conv k,k,cout,cin -> n,h,w,cin
+            W = transpose(flip(W, (0, 1)), (2, 3))
+            if (self.stride > 1):
+                out_grad = dilate(out_grad, (1, 2), self.stride-1)
+            x_grad = conv(out_grad, W, 1, K-self.padding-1)
+            # H-(H-K+1+2P)+1+2X=K-2P+2X=K, X=P
+            # cin,w,h,n conv nw,nh,n,cout -> cin,kw,kh,cout
+            X = transpose(transpose(X, (1, 2)), (0, 3))
+            out_grad = transpose(out_grad, (0, 2))
+            w_grad = conv(X, out_grad, 1, self.padding)
+            w_grad = transpose(w_grad, (0, 2))
+            return x_grad, w_grad
 
 
 def conv(a, b, stride=1, padding=1):

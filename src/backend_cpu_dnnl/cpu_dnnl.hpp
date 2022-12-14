@@ -11,11 +11,23 @@ using namespace dnnl;
 using tag = memory::format_tag;
 using dt = memory::data_type;
 
-void conv_forword_dnnl(scalar_t* input, scalar_t* weight, scalar_t* output,
+void conv_forward_dnnl(scalar_t* input, scalar_t* weight, scalar_t* output,
                        const memory::dim N, const memory::dim H,
                        const memory::dim W, const memory::dim C_in,
                        const memory::dim C_out, const memory::dim K,
                        const memory::dim S, const memory::dim P);
+void conv_backward_weight_dnnl(scalar_t* input, scalar_t* weight_diff,
+                               scalar_t* output_diff, const memory::dim N,
+                               const memory::dim H, const memory::dim W,
+                               const memory::dim C_in, const memory::dim C_out,
+                               const memory::dim K, const memory::dim S,
+                               const memory::dim P);
+void conv_backward_input_dnnl(scalar_t* input_diff, scalar_t* weight,
+                              scalar_t* output_diff, const memory::dim N,
+                              const memory::dim H, const memory::dim W,
+                              const memory::dim C_in, const memory::dim C_out,
+                              const memory::dim K, const memory::dim S,
+                              const memory::dim P);
 
 inline void write_to_dnnl_memory(scalar_t* ptr, dnnl::memory& mem) {
   size_t size = mem.get_desc().get_size();
