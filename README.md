@@ -48,6 +48,10 @@ Needle adopts reverse mode automatic differentiation to obtain the gradient of e
 ### 4. Tensor Acceleration Backend
 Needle provides Numpy_CPU, CPU and GPU as tensor computation backend. By abstracting the underlying data in the tensor as `NDArray` instead of directly storing the data in memory, Needle has the ability to manipulate and transform the tensor more flexibly. For example, By changing the *stride*, *shape* and *offset* of ndarray, you can obtain different tensor expressions without changing the underlying data layout (unless necessary). For CPU and CPU backend, Needle makes use of tiling and vectorization techniques to better speed up *matmul*, which is a basic computation-intensive operation, and takes advantage of CPU and GPU multi-core parallel processing.
 
+### 5. DL library integration
+Needle also gets performance improvement by integrating OneDNN and CuDNN into it. I implemented 4 kinds of *Conv* OP computing (i.e. default CuDNN, Cuda, default CPU, OneDNN). To make OneDNN effective, Set USE_ DNNL is "ON" in `root_dir/CMakeLists.txt`
+
+
 Acknowledgement
 ---------------
 Thanks to Professor *Tianqi Chen* and Professor *Zico Kolter* and all the TAs for the wonderful lessons. 
