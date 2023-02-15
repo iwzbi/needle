@@ -551,13 +551,21 @@ class Conv(TensorOp):
         self.stride = stride
         self.padding = padding
 
+    def compute_cudnn(self, A, B):
+        out = NDArray.cudnn_conv_forward(
+            A, B, padding=self.padding, stride=self.stride)
+        return out
+
     def compute(self, A, B):
         assert A.device == B.device
-        if hasattr(A.device, "conv_forward_dnnl"):
-            print("use onednn")
+        if (A.device.__str__() == "cuda()"):
+            # using cudnn
+            return self.compute_cudnn(A, B)
+        elif hasattr(A.device, "conv_forward_dnnl"):
+            # use onednn
             return NDArray.conv_forward_dnnl(A, B, self.stride, self.padding)
         else:
-            print("use plain cpu")
+            # use plain cpu
             A_pad = A.pad(((0, 0),) + ((self.padding, self.padding),)
                           * 2 + ((0, 0),))
             N, H, W, C_in = A_pad.shape
@@ -572,6 +580,15 @@ class Conv(TensorOp):
             out = A2col @ B.reshape((K*K*C_in, C_out))
             return out.reshape((N, new_h, new_w, C_out))
 
+    def gradient_x_cudnn(self, out_grad, node):
+        x = node.inputs[0]
+        w = node.inputs[1]
+        N, H, W, C_in = x.shape
+        KH, KW, _, C_out = w.shape
+        out = Tensor(NDArray.cudnn_conv_backward_data(out_grad.cached_data,
+                     w.cached_data, H, W, padding=self.padding, stride=self.stride))
+        return out
+
     def gradient(self, out_grad, node):
 
         # out_grad   (N, (H-K+2P)//S+1, (W-K+2P)//S+1, C_out)
@@ -580,15 +597,22 @@ class Conv(TensorOp):
         X, W = node.inputs
         N, _H, _W, C_in = X.shape
         K, _, _, C_out = W.shape
-        if hasattr(X.device, "conv_forward_dnnl"):
-            print("use onednn")
+
+        if (X.device.__str__() == "cuda()"):
+            # using cudnn
+            w_grad = self.gradient_w_cudnn(out_grad, node)
+            x_grad = self.gradient_x_cudnn(out_grad, node)
+            return (x_grad, w_grad)
+
+        elif hasattr(X.device, "conv_forward_dnnl"):
+            # use onednn
             x_grad = NDArray.conv_backward_input_dnnl(
                 out_grad.cached_data, W.cached_data, _H, _W, self.stride, self.padding)
             w_grad = NDArray.conv_backward_weight_dnnl(
                 out_grad.cached_data, X.cached_data, K, self.stride, self.padding)
             return Tensor(x_grad), Tensor(w_grad)
         else:
-            print("use plain cpu")
+            # use plain cpu
             # (H+2P-K+1)-K+1+2X = H-2K+2+2P+2X = H, X = K-P-1
             # n,nh,nw,cout conv k,k,cout,cin -> n,h,w,cin
             W = transpose(flip(W, (0, 1)), (2, 3))

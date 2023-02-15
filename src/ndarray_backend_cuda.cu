@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 
+#include <cudnn.h>
 namespace needle {
 namespace cuda {
 
@@ -550,6 +551,210 @@ void ReduceSum(const CudaArray &a, CudaArray *out, size_t reduce_size) {
                                            out->size);
 }
 
+#define CUDA_CALL(f) { \
+  cudaError_t Status = (f); \
+  if (Status != cudaSuccess) { \
+    std::cout \
+        << "    Error occurred: " << Status << std::endl; \
+    std::exit(1); \
+  } \
+}
+
+#define CUDNN_CALL(f) { \
+  cudnnStatus_t Status = (f); \
+  if (Status != CUDNN_STATUS_SUCCESS) { \
+    std::cout \
+        << "    Error occurred: " << Status << std::endl; \
+    std::exit(1); \
+  } \
+}
+
+void CudnnConvForward(const CudaArray& input, const CudaArray& filter, CudaArray* out, uint32_t n, uint32_t c,
+            uint32_t h, uint32_t w, uint32_t c_out, uint32_t kh, uint32_t kw, uint32_t stride, uint32_t padding){
+  CUDA_CALL(cudaSetDevice(0)); 
+  int device; 
+  struct cudaDeviceProp devProp;
+  CUDA_CALL(cudaGetDevice(&device));
+  CUDA_CALL(cudaGetDeviceProperties(&devProp, device));
+  cudnnHandle_t handle_;
+  CUDNN_CALL(cudnnCreate(&handle_));
+  cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+  cudnnTensorFormat_t format = CUDNN_TENSOR_NHWC;
+
+  cudnnTensorDescriptor_t x_desc;
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&x_desc));
+  CUDNN_CALL(cudnnSetTensor4dDescriptor(x_desc, format, dtype, n, c, h, w));
+
+  cudnnFilterDescriptor_t w_desc;
+  CUDNN_CALL(cudnnCreateFilterDescriptor(&w_desc));
+  CUDNN_CALL(cudnnSetFilter4dDescriptor(w_desc, dtype, format, c_out, c, kh, kw));
+
+  cudnnConvolutionDescriptor_t conv_desc;
+  CUDNN_CALL(cudnnCreateConvolutionDescriptor(&conv_desc));
+  CUDNN_CALL(cudnnSetConvolution2dDescriptor(
+        conv_desc,
+        padding, padding, stride, stride, 1, 1,
+        CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+
+  int out_n, out_c, out_h, out_w;
+  CUDNN_CALL(cudnnGetConvolution2dForwardOutputDim(
+        conv_desc, x_desc, w_desc,
+        &out_n, &out_c, &out_h, &out_w));
+
+  cudnnTensorDescriptor_t out_desc;
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc));
+  CUDNN_CALL(cudnnSetTensor4dDescriptor(
+        out_desc, format, CUDNN_DATA_FLOAT,
+        out_n, out_c, out_h, out_w));
+
+  cudnnConvolutionFwdAlgoPerf_t AlgoPerf[10];
+  int RetAlgoNum = 0;
+  CUDNN_CALL(cudnnFindConvolutionForwardAlgorithm(
+        handle_,
+        x_desc, w_desc, conv_desc, out_desc,
+        1, &RetAlgoNum, AlgoPerf));
+  assert(RetAlgoNum>0);
+  auto algo = AlgoPerf[0].algo;
+  size_t ws_size;
+  CUDNN_CALL(cudnnGetConvolutionForwardWorkspaceSize(
+        handle_, x_desc, w_desc, conv_desc, out_desc, algo, &ws_size));
+  float *ws_data;
+  CUDA_CALL(cudaMalloc(&ws_data, ws_size));
+
+  float alpha = 1.f;
+  float beta = 0.f;
+  CUDNN_CALL(cudnnConvolutionForward(
+      handle_,
+      &alpha, x_desc, input.ptr, w_desc, filter.ptr,
+      conv_desc, algo, ws_data, ws_size,
+      &beta, out_desc, out->ptr));
+  CUDA_CALL(cudaFree(ws_data));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc));
+  CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(x_desc));
+  CUDNN_CALL(cudnnDestroyFilterDescriptor(w_desc));
+}
+
+void CudnnConvBackwardData(const CudaArray& dy, const CudaArray& filter, CudaArray* out, uint32_t n, uint32_t c,
+                             uint32_t h, uint32_t w, uint32_t c_out, uint32_t kh, uint32_t kw, uint32_t h_out, 
+                             uint32_t w_out, uint32_t stride, uint32_t padding){
+  CUDA_CALL(cudaSetDevice(0)); 
+  int device; 
+  struct cudaDeviceProp devProp;
+  CUDA_CALL(cudaGetDevice(&device));
+  CUDA_CALL(cudaGetDeviceProperties(&devProp, device));
+  cudnnHandle_t handle_;
+  CUDNN_CALL(cudnnCreate(&handle_));
+  cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+  cudnnTensorFormat_t format = CUDNN_TENSOR_NHWC;
+
+  cudnnFilterDescriptor_t w_desc;
+  CUDNN_CALL(cudnnCreateFilterDescriptor(&w_desc));
+  CUDNN_CALL(cudnnSetFilter4dDescriptor(w_desc, dtype, format, c_out, c, kh, kw));
+
+  cudnnTensorDescriptor_t dy_desc;
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&dy_desc));
+  CUDNN_CALL(cudnnSetTensor4dDescriptor(dy_desc, format, dtype,  n, c_out, h_out, w_out));
+
+  cudnnConvolutionDescriptor_t conv_desc;
+  CUDNN_CALL(cudnnCreateConvolutionDescriptor(&conv_desc));
+  CUDNN_CALL(cudnnSetConvolution2dDescriptor(
+        conv_desc,
+        padding, padding, stride, stride, 1, 1,
+        CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+
+  cudnnTensorDescriptor_t dx_desc;
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&dx_desc));
+  CUDNN_CALL(cudnnSetTensor4dDescriptor(dx_desc, format, dtype, n, c, h, w));
+
+  cudnnConvolutionBwdDataAlgoPerf_t AlgoPerf[10];
+  int RetAlgoNum = 0;
+  CUDNN_CALL(cudnnFindConvolutionBackwardDataAlgorithm(
+        handle_,
+        w_desc, dy_desc, conv_desc, dx_desc,
+        1, &RetAlgoNum, AlgoPerf));
+  assert(RetAlgoNum>0);
+  auto algo = AlgoPerf[0].algo;
+  size_t ws_size;
+  CUDNN_CALL(cudnnGetConvolutionBackwardDataWorkspaceSize(
+        handle_, w_desc, dy_desc, conv_desc, dx_desc, algo, &ws_size));
+  float *ws_data;
+  CUDA_CALL(cudaMalloc(&ws_data, ws_size));
+
+  float alpha = 1.f;
+  float beta = 0.f;
+  CUDNN_CALL(cudnnConvolutionBackwardData(
+      handle_,
+      &alpha, w_desc, filter.ptr, dy_desc, dy.ptr,
+      conv_desc, algo, ws_data, ws_size,
+      &beta, dx_desc, out->ptr));
+  CUDA_CALL(cudaFree(ws_data));
+  CUDNN_CALL(cudnnDestroyFilterDescriptor(w_desc));
+  CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(dx_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(dy_desc));
+}
+
+void CudnnConvBackwardFilter(const CudaArray& dy, const CudaArray& x, CudaArray* out, uint32_t n, uint32_t c,
+                             uint32_t h, uint32_t w, uint32_t c_out, uint32_t kh, uint32_t kw, uint32_t h_out, 
+                             uint32_t w_out, uint32_t stride, uint32_t padding){
+  CUDA_CALL(cudaSetDevice(0)); 
+  int device; 
+  struct cudaDeviceProp devProp;
+  CUDA_CALL(cudaGetDevice(&device));
+  CUDA_CALL(cudaGetDeviceProperties(&devProp, device));
+  cudnnHandle_t handle_;
+  CUDNN_CALL(cudnnCreate(&handle_));
+  cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+  cudnnTensorFormat_t format = CUDNN_TENSOR_NHWC;
+
+  cudnnTensorDescriptor_t x_desc;
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&x_desc));
+  CUDNN_CALL(cudnnSetTensor4dDescriptor(x_desc, format, dtype, n, c, h, w));
+
+  cudnnTensorDescriptor_t dy_desc;
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&dy_desc));
+  CUDNN_CALL(cudnnSetTensor4dDescriptor(dy_desc, format, dtype,  n, c_out, h_out, w_out));
+
+  cudnnConvolutionDescriptor_t conv_desc;
+  CUDNN_CALL(cudnnCreateConvolutionDescriptor(&conv_desc));
+  CUDNN_CALL(cudnnSetConvolution2dDescriptor(
+        conv_desc,
+        padding, padding, stride, stride, 1, 1,
+        CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+
+  cudnnFilterDescriptor_t dw_desc;
+  CUDNN_CALL(cudnnCreateFilterDescriptor(&dw_desc));
+  CUDNN_CALL(cudnnSetFilter4dDescriptor(dw_desc, dtype, format, c_out, c, kh, kw));
+
+  cudnnConvolutionBwdFilterAlgoPerf_t AlgoPerf[10];
+  int RetAlgoNum = 0;
+  CUDNN_CALL(cudnnFindConvolutionBackwardFilterAlgorithm(
+        handle_,
+        x_desc, dy_desc, conv_desc, dw_desc,
+        1, &RetAlgoNum, AlgoPerf));
+  assert(RetAlgoNum>0);
+  auto algo = AlgoPerf[0].algo;
+  size_t ws_size;
+  CUDNN_CALL(cudnnGetConvolutionBackwardFilterWorkspaceSize(
+        handle_, x_desc, dy_desc, conv_desc, dw_desc, algo, &ws_size));
+  float *ws_data;
+  CUDA_CALL(cudaMalloc(&ws_data, ws_size));
+
+  float alpha = 1.f;
+  float beta = 0.f;
+  CUDNN_CALL(cudnnConvolutionBackwardFilter(
+      handle_,
+      &alpha, x_desc, x.ptr, dy_desc, dy.ptr,
+      conv_desc, algo, ws_data, ws_size,
+      &beta, dw_desc, out->ptr));
+  CUDA_CALL(cudaFree(ws_data));
+  CUDNN_CALL(cudnnDestroyFilterDescriptor(dw_desc));
+  CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(x_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(dy_desc));
+}
+
 }  // namespace cuda
 }  // namespace needle
 
@@ -617,6 +822,9 @@ PYBIND11_MODULE(ndarray_backend_cuda, m) {
   m.def("ewise_tanh", EwiseTanh);
 
   m.def("matmul", Matmul);
+  m.def("CudnnConvForward", CudnnConvForward);
+  m.def("CudnnConvBackwardFilter", CudnnConvBackwardFilter);
+  m.def("CudnnConvBackwardData", CudnnConvBackwardData);
 
   m.def("reduce_max", ReduceMax);
   m.def("reduce_sum", ReduceSum);

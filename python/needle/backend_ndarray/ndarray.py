@@ -497,6 +497,55 @@ class NDArray:
         return out
 
     @staticmethod
+    def cudnn_conv_forward(data, filter, stride=1, padding=0):
+        assert data.device.__str__() == "cuda()"
+        N, H, W, C_in = data.shape
+        KH, KW, _, C_out = filter.shape
+        # print("A.shape:", A.shape)
+        # print("B.shape:", B_oirg.shape)
+        w = filter.permute((3, 0, 1, 2)).compact()
+        out = NDArray(np.zeros((N, (H-KH+2*padding+1)//stride,
+                      (W-KW+2*padding+1)//stride, C_out)), device=data.device)
+        out = out.compact()
+        data.device.CudnnConvForward(data.compact(
+        )._handle, w._handle, out._handle, N, C_in, H, W, C_out, KH, KW, stride, padding)
+        return out
+
+    @staticmethod
+    def cudnn_conv_backward_filter(dy, data, kh, kw, stride=1, padding=0):
+        assert dy.device.__str__() == "cuda()"
+        dy_orig = dy
+        x_orig = data
+        N, H, W, C_in = x_orig.shape
+        KH, KW = kh, kw
+        _, H_out, W_out, C_out = dy_orig.shape
+        # print("A.shape:", A.shape)
+        # print("B.shape:", B_oirg.shape)
+        out = NDArray(np.zeros((C_out, KH, KW, C_in)), device=dy_orig.device)
+        out = out.compact()
+        dy.device.CudnnConvBackwardFilter(dy_orig.compact()._handle, x_orig.compact()._handle, out._handle, N, C_in, H, W, C_out, KH, KW,
+                                          H_out, W_out, stride, padding)
+        out = out.permute((1, 2, 3, 0)).compact()
+        return out
+
+    @staticmethod
+    def cudnn_conv_backward_data(dy, filter, h, w, stride=1, padding=0):
+        assert dy.device.__str__() == "cuda()"
+        dy_orig = dy
+        w_orig = filter
+        N, H_out, W_out, C_out = dy_orig.shape
+        KH, KW, C_in, C_out = w_orig.shape
+        H, W = h, w
+        # print("A.shape:", A.shape)
+        # print("B.shape:", B_oirg.shape)
+        out = NDArray(np.zeros((N, H, W, C_in)), device=dy_orig.device)
+        out = out.compact()
+        w = w_orig.permute((3, 0, 1, 2)).compact()
+        dy.device.CudnnConvBackwardData(dy_orig.compact()._handle, w._handle, out._handle, N, C_in, H, W, C_out, KH, KW,
+                                        H_out, W_out, stride, padding)
+        return out
+
+    @staticmethod
     def conv_forward_dnnl(data, weight, stride=1, padding=0):
         assert data.device == weight.device
         if hasattr(data.device, "conv_forward_dnnl"):
@@ -532,10 +581,11 @@ class NDArray:
         if hasattr(weight.device, "conv_backward_input_dnnl"):
             KH, KW, C_in, C_out = weight.shape
             N, _, _, _ = output_diff.shape
-            input_diff = NDArray(np.zeros((N, H, W, C_in)), device=weight.device)
+            input_diff = NDArray(np.zeros((N, H, W, C_in)),
+                                 device=weight.device)
             input_diff = input_diff.compact()
             weight.device.conv_backward_input_dnnl(input_diff._handle, weight.compact()._handle,
-                                                  output_diff.compact()._handle, N, H, W, C_in, C_out, KH, stride, padding)
+                                                   output_diff.compact()._handle, N, H, W, C_in, C_out, KH, stride, padding)
             return input_diff
         else:
             raise RuntimeError
